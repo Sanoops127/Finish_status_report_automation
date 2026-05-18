@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+import winreg
 from pathlib import Path
 from typing import Any, Optional
 
@@ -26,6 +27,15 @@ _RECOVERABLE_LAUNCH_ERRORS = (
     "Target page, context or browser has been closed",
     "Failed to launch",
     "ECONNREFUSED",
+)
+
+_EDGE_REGISTRY_KEYS = (
+    (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
+    (
+        winreg.HKEY_LOCAL_MACHINE,
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
+    ),
+    (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
 )
 
 
@@ -82,16 +92,6 @@ def _run_cmd(*cmd: str, timeout: int = 60) -> subprocess.CompletedProcess:
     )
 
 
-def _warn_python_version() -> None:
-    if sys.version_info >= (3, 14):
-        logger.warning(
-            "Python %s.%s detected. Playwright is best supported on Python 3.11–3.13. "
-            "If Edge keeps failing, install Python 3.12 and recreate the venv.",
-            sys.version_info.major,
-            sys.version_info.minor,
-        )
-
-
 def reset_edge_profile(profile_dir: Path) -> None:
     if profile_dir.exists():
         shutil.rmtree(profile_dir, ignore_errors=True)
@@ -111,32 +111,102 @@ def clear_profile_locks(profile_dir: Path) -> None:
             logger.warning("Could not remove profile lock %s: %s", path, exc)
 
 
+def _is_fresh_profile(profile_dir: Path) -> bool:
+    return not (profile_dir / "Default").exists()
+
+
+def _edge_from_registry() -> list[Path]:
+    found: list[Path] = []
+    for hive, subkey in _EDGE_REGISTRY_KEYS:
+        try:
+            with winreg.OpenKey(hive, subkey) as key:
+                value, _ = winreg.QueryValueEx(key, "")
+        except OSError:
+            continue
+        if value:
+            path = Path(str(value).strip('"'))
+            if path.is_file():
+                found.append(path)
+    return found
+
+
+def _edge_from_where() -> list[Path]:
+    result = _run_cmd("where.exe", "msedge.exe", timeout=15)
+    found: list[Path] = []
+    for line in result.stdout.splitlines():
+        candidate = Path(line.strip().strip('"'))
+        if candidate.is_file():
+            found.append(candidate)
+    return found
+
+
+def _edge_from_glob_search() -> list[Path]:
+    ps_script = (
+        "Get-ChildItem -Path @("
+        "'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe', "
+        "'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'"
+        ") -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName"
+    )
+    result = _run_cmd("powershell", "-NoProfile", "-Command", ps_script, timeout=20)
+    found: list[Path] = []
+    for line in result.stdout.splitlines():
+        candidate = Path(line.strip())
+        if candidate.is_file():
+            found.append(candidate)
+    return found
+
+
+def _sort_edge_executables(paths: list[Path]) -> list[Path]:
+    def rank(path: Path) -> tuple[int, str]:
+        text = str(path).lower()
+        if "program files (x86)" in text:
+            return (1, text)
+        if "program files" in text:
+            return (0, text)
+        return (2, text)
+
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in sorted(paths, key=rank):
+        key = str(path.resolve())
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
 def resolve_edge_executables() -> list[Path]:
     configured = os.getenv("EDGE_EXECUTABLE_PATH", "").strip()
     if configured:
         path = Path(configured)
         return [path] if path.is_file() else []
 
-    candidates = [
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
-        / "Microsoft"
-        / "Edge"
-        / "Application"
-        / "msedge.exe",
-        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
-        / "Microsoft"
-        / "Edge"
-        / "Application"
-        / "msedge.exe",
-    ]
-    seen: set[str] = set()
-    resolved: list[Path] = []
-    for candidate in candidates:
-        key = str(candidate.resolve()) if candidate.exists() else str(candidate)
-        if candidate.is_file() and key not in seen:
-            seen.add(key)
-            resolved.append(candidate)
-    return resolved
+    candidates: list[Path] = []
+    candidates.extend(
+        [
+            Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+            Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+        ]
+    )
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(
+            Path(local_app_data) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+        )
+    program_files = os.environ.get("ProgramFiles")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)")
+    if program_files:
+        candidates.append(Path(program_files) / "Microsoft" / "Edge" / "Application" / "msedge.exe")
+    if program_files_x86:
+        candidates.append(
+            Path(program_files_x86) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+        )
+
+    candidates.extend(_edge_from_registry())
+    candidates.extend(_edge_from_where())
+    candidates.extend(_edge_from_glob_search())
+
+    return _sort_edge_executables([path for path in candidates if path.is_file()])
 
 
 def terminate_stale_edge_for_profile(profile_dir: Path) -> None:
@@ -183,7 +253,7 @@ def _persistent_launch_kwargs(profile_dir: Path, *, plan: dict[str, Any]) -> dic
         "headless": headless,
         "accept_downloads": True,
         "permissions": ["clipboard-read", "clipboard-write"],
-        "timeout": int(os.getenv("BROWSER_LAUNCH_TIMEOUT_MS", "120000")),
+        "timeout": int(os.getenv("BROWSER_LAUNCH_TIMEOUT_MS", "60000")),
     }
     kwargs.update(plan)
     return kwargs
@@ -192,17 +262,27 @@ def _persistent_launch_kwargs(profile_dir: Path, *, plan: dict[str, Any]) -> dic
 def _launch_plans(edge_executables: list[Path]) -> list[tuple[str, dict[str, Any]]]:
     channel = os.getenv("EDGE_CHANNEL", "msedge").strip() or "msedge"
     plans: list[tuple[str, dict[str, Any]]] = []
+    prefer_cdp = _env_bool("EDGE_USE_CDP", default=True)
+
+    if prefer_cdp:
+        for edge_exe in edge_executables:
+            plans.append(
+                (f"cdp:exe:{edge_exe}", {"executable_path": str(edge_exe), "_cdp": True})
+            )
 
     for edge_exe in edge_executables:
         plans.append((f"persistent:exe:{edge_exe}", {"executable_path": str(edge_exe)}))
+
+    if not prefer_cdp:
+        for edge_exe in edge_executables:
+            plans.append(
+                (f"cdp:exe:{edge_exe}", {"executable_path": str(edge_exe), "_cdp": True})
+            )
 
     plans.append((f"persistent:channel:{channel}", {"channel": channel}))
 
     if channel == "msedge":
         plans.append(("persistent:channel:msedge-beta", {"channel": "msedge-beta"}))
-
-    for edge_exe in edge_executables:
-        plans.append((f"cdp:exe:{edge_exe}", {"executable_path": str(edge_exe), "_cdp": True}))
 
     return plans
 
@@ -219,21 +299,24 @@ def _launch_via_cdp(
     edge_executable: str,
 ) -> ManagedBrowserContext:
     port = int(os.getenv("EDGE_CDP_PORT", "0")) or _pick_free_port()
+    fresh_profile = _is_fresh_profile(profile_dir)
+
     cmd = [
         edge_executable,
-        f"--user-data-dir={profile_dir}",
+        f'--user-data-dir={profile_dir}',
         f"--remote-debugging-port={port}",
-        "--no-first-run",
         "--no-default-browser-check",
-        "--disable-extensions",
-        "about:blank",
     ]
-    logger.info("Launching Edge via CDP port %s (avoids remote-debugging-pipe bug)", port)
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    if not fresh_profile:
+        cmd.append("--no-first-run")
+
+    logger.info(
+        "Launching Edge via CDP port %s using %s (fresh_profile=%s)",
+        port,
+        edge_executable,
+        fresh_profile,
     )
+    proc = subprocess.Popen(cmd)
 
     cdp_url = f"http://127.0.0.1:{port}"
     last_error: Optional[Exception] = None
@@ -249,6 +332,7 @@ def _launch_via_cdp(
             )
             if not context.pages:
                 context.new_page()
+            logger.info("Connected to Edge over CDP on port %s", port)
             return ManagedBrowserContext(context, edge_process=proc, cdp_browser=browser)
         except Exception as exc:
             last_error = exc
@@ -289,11 +373,10 @@ def launch_edge_persistent_context(
     """
     Launch Edge with a persistent profile.
 
-    On some Windows machines Edge stable fails with Playwright's remote-debugging-pipe
-    (Browser window not found). We fall back to launching Edge with --remote-debugging-port
-    and connect_over_cdp, which matches what works when Edge is started manually.
+    On some Windows machines Playwright's remote-debugging-pipe fails with
+    Browser.getWindowForTarget. We launch Edge ourselves with --remote-debugging-port
+    and connect_over_cdp instead, which is the same as starting Edge manually.
     """
-    _warn_python_version()
     ensure_playwright_driver()
     profile_dir.mkdir(parents=True, exist_ok=True)
 
@@ -304,7 +387,16 @@ def launch_edge_persistent_context(
     if edge_executables:
         logger.info("Found Edge executable(s): %s", ", ".join(str(p) for p in edge_executables))
     else:
-        logger.warning("No Edge executable found; using Playwright channel lookup only.")
+        logger.error(
+            "Could not locate msedge.exe on this machine. Set in .env:\n"
+            "  EDGE_EXECUTABLE_PATH=C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+        )
+
+    if not edge_executables:
+        raise FileNotFoundError(
+            "msedge.exe not found. Set EDGE_EXECUTABLE_PATH in .env to the full path shown "
+            "when you run: where msedge.exe"
+        )
 
     plans = _launch_plans(edge_executables)
     last_error: Optional[Exception] = None
@@ -329,13 +421,12 @@ def launch_edge_persistent_context(
         break
 
     logger.error(
-        "Edge could not be launched on this machine.\n"
-        "Try on production:\n"
-        "  1) taskkill /F /IM msedge.exe\n"
-        "  2) rmdir /S /Q .edge-automation-profile\n"
-        "  3) set EDGE_EXECUTABLE_PATH=C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe\n"
-        "  4) python -m src.setup_browser\n"
-        "If still failing, use Python 3.12 instead of 3.14.\n"
+        "Edge could not be launched. On production run in PowerShell:\n"
+        "  where.exe msedge.exe\n"
+        "Then add the path to .env:\n"
+        "  EDGE_EXECUTABLE_PATH=C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe\n"
+        "  taskkill /F /IM msedge.exe\n"
+        "  python -m src.setup_browser\n"
         "Profile: %s",
         profile_dir,
     )

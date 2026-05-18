@@ -3,4 +3,5 @@ logs/
 __pycache__/
 *.pyc
 .edge-automation-profile/
+.playwright-msedge-installed
 status_report/

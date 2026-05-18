@@ -9,6 +9,7 @@ from playwright.sync_api import sync_playwright
 
 from src.core.job_manager import JobManager
 from src.paths import EDGE_AUTOMATION_PROFILE_DIR, STATUS_REPORT_DIR
+from src.utils.browser_launcher import launch_edge_persistent_context
 from src.utils.logger import logger
 
 
@@ -38,14 +39,12 @@ def main():
     edge_profile = Path(os.getenv("EDGE_USER_DATA_DIR", str(EDGE_AUTOMATION_PROFILE_DIR)))
 
     with sync_playwright() as p:
-        # Edge + persistent profile keeps Microsoft / SharePoint sessions (incl. MFA) between runs.
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(edge_profile),
-            channel="msedge",
-            headless=False,
-            accept_downloads=True,
-            permissions=["clipboard-read", "clipboard-write"],
-        )
+        try:
+            # Edge + persistent profile keeps Microsoft / SharePoint sessions (incl. MFA) between runs.
+            context = launch_edge_persistent_context(p, edge_profile)
+        except Exception as exc:
+            logger.error("Browser failed to launch: %s", exc)
+            sys.exit(1)
         page = context.pages[0] if context.pages else context.new_page()
         manager = JobManager(
             page,

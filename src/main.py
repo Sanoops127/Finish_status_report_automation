@@ -3,7 +3,6 @@ import os
 import sys
 import asyncio
 import time
-import shutil
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -38,28 +37,14 @@ def main():
 
     edge_profile = Path(os.getenv("EDGE_USER_DATA_DIR", str(EDGE_AUTOMATION_PROFILE_DIR)))
 
-    # Clear corrupted profile on startup
-    if edge_profile.exists():
-        logger.info(f"Clearing existing Edge profile at {edge_profile}")
-        shutil.rmtree(edge_profile)
-
-    edge_profile.mkdir(parents=True, exist_ok=True)
-    STATUS_REPORT_DIR.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as p:
         # Edge + persistent profile keeps Microsoft / SharePoint sessions (incl. MFA) between runs.
         context = p.chromium.launch_persistent_context(
             user_data_dir=str(edge_profile),
             channel="msedge",
-            headless=True,
+            headless=False,
             accept_downloads=True,
             permissions=["clipboard-read", "clipboard-write"],
-            args=[
-                "--disable-gpu",
-                "--disable-dev-shm-usage",
-                "--no-first-run",
-                "--disable-extensions",
-            ],
         )
         page = context.pages[0] if context.pages else context.new_page()
         manager = JobManager(

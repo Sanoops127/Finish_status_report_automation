@@ -1,0 +1,6 @@
+.env
+logs/
+__pycache__/
+*.pyc
+.edge-automation-profile/
+status_report/

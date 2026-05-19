@@ -4,9 +4,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import html
+
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
+from src.core.report_transformer import sanitize_cell_value
 from src.utils.logger import logger
 
 
@@ -76,7 +79,7 @@ def workbook_to_html_table(export_path: Path, skip_header: bool = False) -> str:
     for row in ws.iter_rows(min_row=start_row, values_only=True):
         html_rows.append("<tr>")
         for cell_value in row:
-            value = cell_value if cell_value is not None else ""
+            value = html.escape(sanitize_cell_value(cell_value))
             html_rows.append(f"<td>{value}</td>")
         html_rows.append("</tr>")
 

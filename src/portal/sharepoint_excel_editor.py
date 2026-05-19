@@ -15,9 +15,14 @@ class SharePointExcelEditor:
         self,
         sharepoint_home_url: str,
         file_name: str,
-        data_tsv: str,
+        *,
+        data_tsv: str | None = None,
+        data_html: str | None = None,
     ) -> None:
-        """Open SharePoint Excel file and paste TSV data starting at A2 (preserves header)."""
+        """Open SharePoint Excel file and paste export data (HTML preferred; TSV optional)."""
+        if not data_html and not data_tsv:
+            raise ValueError("Provide data_html or data_tsv")
+
         logger.info("Opening SharePoint home page")
         self.page.goto(sharepoint_home_url, timeout=120_000, wait_until="domcontentloaded")
         self.page.wait_for_timeout(5000)
@@ -28,8 +33,12 @@ class SharePointExcelEditor:
 
         self._ensure_edit_mode()
         self._focus_workbook()
-        logger.info("Pasting data at A1: %s", file_name)
-        self._paste_excel_content(data_tsv)
+        if data_html:
+            logger.info("Pasting HTML table at A1: %s", file_name)
+            self._paste_html_content(data_html)
+        else:
+            logger.info("Pasting TSV at A1: %s", file_name)
+            self._paste_excel_content(data_tsv or "")
         self._save_file()
         logger.info("SharePoint file updated with export data")
 
@@ -143,6 +152,27 @@ class SharePointExcelEditor:
                 continue
         self.page.click("body", timeout=5_000)
         self.page.wait_for_timeout(600)
+
+    def _paste_html_content(self, html_table: str) -> None:
+        """Clear sheet and paste HTML so each cell stays in one column."""
+        self._focus_workbook()
+        self.page.keyboard.press("Control+A")
+        self.page.wait_for_timeout(400)
+        self.page.keyboard.press("Delete")
+        self.page.wait_for_timeout(400)
+        self.page.keyboard.press("Control+Home")
+        self.page.wait_for_timeout(400)
+
+        self.page.evaluate(
+            """async (htmlContent) => {
+                const blob = new Blob([htmlContent], { type: "text/html" });
+                const item = new ClipboardItem({ "text/html": blob });
+                await navigator.clipboard.write([item]);
+            }""",
+            html_table,
+        )
+        self.page.keyboard.press("Control+v")
+        self.page.wait_for_timeout(3000)
 
     def _paste_excel_content(self, data_tsv: str) -> None:
         """Delete all values below header (starting at A2) and paste TSV data."""

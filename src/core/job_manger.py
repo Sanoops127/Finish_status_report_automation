@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Optional
-from src.core.report_transformer import read_values_without_header, values_to_tsv
+from src.core.report_transformer import read_values_without_header, rows_to_html_table
 from src.portal.sharepoint_excel_editor import SharePointExcelEditor
 from src.portal.finish_status_report_page import FinishStatusReportPage
 from src.portal.login_page import LoginPage
@@ -47,13 +47,13 @@ class JobManager:
             rows = read_values_without_header(saved_path)
             # Filter out rows without JOB ID (first column)
             rows = [row for row in rows if row and row[0] and str(row[0]).strip()]
-            data_tsv = values_to_tsv(rows).strip()
+            data_html = rows_to_html_table(rows)
             sp_page = self.page.context.new_page()
             try:
                 SharePointExcelEditor(sp_page).update_file_values(
                     sharepoint_home_url=self.sharepoint_site_url,
                     file_name=self.sharepoint_target_filename,
-                    data_tsv=data_tsv,
+                    data_html=data_html,
                 )
                 logger.info("SharePoint online Excel update finished")
             finally:

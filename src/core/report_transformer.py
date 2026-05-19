@@ -1,9 +1,14 @@
+import html
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+
+# Control characters that break TSV/clipboard paste into Excel (tab splits columns).
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 @dataclass
@@ -19,6 +24,17 @@ class ExportData:
     def clear_through_row(self) -> int:
         """Last row to clear in SharePoint sheet (header is row 1)."""
         return max(self.row_count + 500, 5000)
+
+
+def sanitize_cell_value(cell) -> str:
+    """Normalize a cell for SharePoint paste. Tabs/newlines split columns in Excel TSV paste."""
+    if cell is None:
+        return ""
+    text = str(cell)
+    text = text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    text = text.replace("\t", " ")
+    text = _CONTROL_CHAR_RE.sub("", text)
+    return " ".join(text.split())
 
 
 def read_export_data(source_path: Path) -> ExportData:
@@ -40,11 +56,7 @@ def read_export_data(source_path: Path) -> ExportData:
 
         # Only include rows where first column is a number (ID)
         if first_cell_str and first_cell_str.isdigit():
-            # Clean cell values: remove newlines and carriage returns to prevent row splits in TSV/Excel paste
-            data_rows.append([
-                "" if cell is None else str(cell).replace("\r", "").replace("\n", " ").strip()
-                for cell in row
-            ])
+            data_rows.append([sanitize_cell_value(cell) for cell in row])
 
     wb.close()
 
@@ -63,8 +75,34 @@ def read_values_without_header(source_path: Path) -> List[List[str]]:
 
 
 def values_to_tsv(values: List[List[str]]) -> str:
-    lines = ["\t".join(row) for row in values]
+    if not values:
+        return ""
+    col_count = max(len(row) for row in values)
+    lines: list[str] = []
+    for row in values:
+        cells = [sanitize_cell_value(cell) for cell in row]
+        while len(cells) < col_count:
+            cells.append("")
+        lines.append("\t".join(cells))
     return "\n".join(lines)
+
+
+def rows_to_html_table(values: List[List[str]]) -> str:
+    """HTML table paste keeps each value in one cell even if it contained tabs."""
+    if not values:
+        return "<table></table>"
+    col_count = max(len(row) for row in values)
+    parts = ["<table>"]
+    for row in values:
+        parts.append("<tr>")
+        cells = [sanitize_cell_value(cell) for cell in row]
+        while len(cells) < col_count:
+            cells.append("")
+        for cell in cells:
+            parts.append(f"<td>{html.escape(cell)}</td>")
+        parts.append("</tr>")
+    parts.append("</table>")
+    return "\n".join(parts)
 
 
 def clear_range_address(col_count: int, clear_through_row: int) -> str:

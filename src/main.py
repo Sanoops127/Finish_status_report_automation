@@ -38,46 +38,50 @@ def main():
 
     edge_profile = Path(os.getenv("EDGE_USER_DATA_DIR", str(EDGE_AUTOMATION_PROFILE_DIR)))
 
-    with sync_playwright() as p:
-        try:
-            # Edge + persistent profile keeps Microsoft / SharePoint sessions (incl. MFA) between runs.
-            context = launch_edge_persistent_context(p, edge_profile)
-        except Exception as exc:
-            logger.error("Browser failed to launch: %s", exc)
-            sys.exit(1)
-        page = context.pages[0] if context.pages else context.new_page()
-        manager = JobManager(
-            page,
-            export_dir=STATUS_REPORT_DIR,
-            sharepoint_site_url=sharepoint_site_url,
-            sharepoint_library_url=sharepoint_document_library_url,
-            export_filename=export_filename,
-            sharepoint_target_filename=sharepoint_target_filename,
-            powerbi_workspace_url=powerbi_workspace_url,
-            powerbi_semantic_model_name=powerbi_semantic_model_name,
-        )
+    run_index = 0
+    while True:
+        run_index += 1
+        logger.info("Starting automation run #%s", run_index)
 
-        run_index = 0
         try:
-            while True:
-                run_index += 1
-                logger.info("Starting automation run #%s", run_index)
+            with sync_playwright() as p:
                 try:
-                    manager.run_finish_status_report_job(url, username, password)
+                    # Edge + persistent profile keeps Microsoft / SharePoint sessions (incl. MFA) between runs.
+                    context = launch_edge_persistent_context(p, edge_profile)
                 except Exception as exc:
-                    logger.exception("Run #%s failed: %s", run_index, exc)
+                    logger.error("Browser failed to launch: %s", exc)
+                    if run_once:
+                        sys.exit(1)
+                    raise
 
-                if run_once:
-                    logger.info("RUN_ONCE is set; exiting after single run.")
-                    break
+                try:
+                    page = context.pages[0] if context.pages else context.new_page()
+                    manager = JobManager(
+                        page,
+                        export_dir=STATUS_REPORT_DIR,
+                        sharepoint_site_url=sharepoint_site_url,
+                        sharepoint_library_url=sharepoint_document_library_url,
+                        export_filename=export_filename,
+                        sharepoint_target_filename=sharepoint_target_filename,
+                        powerbi_workspace_url=powerbi_workspace_url,
+                        powerbi_semantic_model_name=powerbi_semantic_model_name,
+                    )
 
-                logger.info(
-                    "Waiting %s minutes before next run (set JOB_INTERVAL_MINUTES or RUN_ONCE=1 to change).",
-                    interval_minutes,
-                )
-                time.sleep(interval_minutes * 60)
-        finally:
-            context.close()
+                    manager.run_finish_status_report_job(url, username, password)
+                finally:
+                    context.close()
+        except Exception as exc:
+            logger.exception("Run #%s failed: %s", run_index, exc)
+
+        if run_once:
+            logger.info("RUN_ONCE is set; exiting after single run.")
+            break
+
+        logger.info(
+            "Waiting %s minutes before next run (set JOB_INTERVAL_MINUTES or RUN_ONCE=1 to change).",
+            interval_minutes,
+        )
+        time.sleep(interval_minutes * 60)
 
 
 if __name__ == "__main__":

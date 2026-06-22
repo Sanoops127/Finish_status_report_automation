@@ -327,11 +327,11 @@ class SharePointExcelEditor:
             # Select from AB2 to AB1000 using keyboard
             logger.info("Selecting AB2:AB1000 and filling down")
             self.page.keyboard.press("Control+Shift+End")
-            self.page.wait_for_timeout(600)
+            self.page.wait_for_timeout(700)
 
             # Fill down using Ctrl+D
             self.page.keyboard.press("Control+d")
-            self.page.wait_for_timeout(1000)
+            self.page.wait_for_timeout(1200)
 
             self.page.keyboard.press("Control+Home")
             self.page.wait_for_timeout(400)

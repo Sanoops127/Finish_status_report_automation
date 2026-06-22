@@ -202,7 +202,7 @@ class SharePointExcelEditor:
             data_tsv,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(5000)
 
     def _paste_tsv_at_a2(self, data_tsv: str) -> None:
         """Navigate to A1 and paste TSV data directly (like manual paste)."""

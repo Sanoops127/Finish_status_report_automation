@@ -279,7 +279,7 @@ class SharePointExcelEditor:
 
             # Navigate to column AA (27th column) by pressing Right 26 times
             logger.info("Navigating to column AA")
-            for _ in range(26):
+            for _ in range(27):
                 self.page.keyboard.press("ArrowRight")
                 self.page.wait_for_timeout(50)
             self.page.wait_for_timeout(600)

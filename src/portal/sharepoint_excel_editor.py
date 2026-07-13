@@ -193,7 +193,7 @@ class SharePointExcelEditor:
 
         # Go back to A2 and paste
         self.page.keyboard.press("Control+Home")
-        self.page.wait_for_timeout(400)
+        self.page.wait_for_timeout(500)
 
         self.page.evaluate(
             """async (tsvContent) => {
@@ -202,7 +202,7 @@ class SharePointExcelEditor:
             data_tsv,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(5000)
+        self.page.wait_for_timeout(6000)
 
     def _paste_tsv_at_a2(self, data_tsv: str) -> None:
         """Navigate to A1 and paste TSV data directly (like manual paste)."""
@@ -210,7 +210,7 @@ class SharePointExcelEditor:
 
         # Go to A1
         self.page.keyboard.press("Control+Home")
-        self.page.wait_for_timeout(400)
+        self.page.wait_for_timeout(500)
 
         # Paste TSV data directly without clearing
         clean_tsv = data_tsv.strip()
@@ -222,15 +222,15 @@ class SharePointExcelEditor:
             clean_tsv,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(4000)
 
     def _paste_data_at_a2(self, html_table: str) -> None:
         """Navigate to A2 and paste data values (no headers)."""
         self._focus_workbook()
         self.page.keyboard.press("Control+Home")
-        self.page.wait_for_timeout(400)
+        self.page.wait_for_timeout(500)
         self.page.keyboard.press("ArrowDown")
-        self.page.wait_for_timeout(200)
+        self.page.wait_for_timeout(300)
 
         self.page.evaluate(
             """async (htmlContent) => {
@@ -264,7 +264,7 @@ class SharePointExcelEditor:
             html_table,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(4000)
 
     def _apply_formulas_to_columns(self) -> None:
         """Apply date formatting formulas to columns AA and AB after paste."""
@@ -275,14 +275,14 @@ class SharePointExcelEditor:
 
             # Navigate to A2 first
             self.page.keyboard.press("Control+Home")
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(500)
 
             # Navigate to column AA (27th column) by pressing Right 26 times
             logger.info("Navigating to column AA")
-            for _ in range(27):
+            for _ in range(28):
                 self.page.keyboard.press("ArrowRight")
-                self.page.wait_for_timeout(50)
-            self.page.wait_for_timeout(600)
+                self.page.wait_for_timeout(100)
+            self.page.wait_for_timeout(700)
 
             # Enter the date formula in AA2
             formula_date = '=IF(ISBLANK(M2), "", TEXT(M2, "dd-mm-yyyy"))'
@@ -331,10 +331,10 @@ class SharePointExcelEditor:
 
             # Fill down using Ctrl+D
             self.page.keyboard.press("Control+d")
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(2000)
 
             self.page.keyboard.press("Control+Home")
-            self.page.wait_for_timeout(400)
+            self.page.wait_for_timeout(500)
 
             logger.info("Formulas applied successfully to columns AA and AB")
         except Exception as e:

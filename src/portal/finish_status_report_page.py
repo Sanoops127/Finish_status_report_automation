@@ -8,7 +8,6 @@ from src.utils.retry_helper import with_retry
 
 COLUMNS_TO_HIDE_BEFORE_EXPORT: List[str] = [
     "Previous Work Type",
-    "Field Job Reference",
     "Other Information",
 ]
 

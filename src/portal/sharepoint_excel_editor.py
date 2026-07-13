@@ -302,16 +302,16 @@ class SharePointExcelEditor:
 
             # Fill down using Ctrl+D
             self.page.keyboard.press("Control+d")
-            self.page.wait_for_timeout(2000)
+            self.page.wait_for_timeout(4000)
 
             # Navigate to AB2 (move right one column from current position)
             logger.info("Navigating to column AB")
             
             # Collapse the selection from column AA and move one column to the right
             self.page.keyboard.press("ArrowRight")
-            self.page.wait_for_timeout(300)
+            self.page.wait_for_timeout(400)
             self.page.keyboard.press("ArrowDown")
-            self.page.wait_for_timeout(600)
+            self.page.wait_for_timeout(700)
 
             # Enter the datetime formula in AB2
             formula_datetime = '=IF(ISBLANK(V2), "", TEXT(V2, "dd-mm-yyyy hh:mm:ss"))'
@@ -322,16 +322,16 @@ class SharePointExcelEditor:
 
             # Go back to AB2 to copy formula down
             self.page.keyboard.press("ArrowUp")
-            self.page.wait_for_timeout(300)
+            self.page.wait_for_timeout(400)
 
             # Select from AB2 to AB1000 using keyboard
             logger.info("Selecting AB2:AB1000 and filling down")
             self.page.keyboard.press("Control+Shift+End")
-            self.page.wait_for_timeout(700)
+            self.page.wait_for_timeout(800)
 
             # Fill down using Ctrl+D
             self.page.keyboard.press("Control+d")
-            self.page.wait_for_timeout(1200)
+            self.page.wait_for_timeout(1500)
 
             self.page.keyboard.press("Control+Home")
             self.page.wait_for_timeout(400)

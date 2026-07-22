@@ -12,9 +12,33 @@ from src.paths import EDGE_AUTOMATION_PROFILE_DIR, STATUS_REPORT_DIR
 from src.utils.browser_launcher import launch_edge_persistent_context
 from src.utils.logger import logger
 
+STOP_FLAG = Path(os.getenv("STOP_FLAG_PATH", "stop.flag"))
+CHECK_INTERVAL_SECONDS = 30  # how often to check the flag while "sleeping"
+
+
+def should_stop():
+    return STOP_FLAG.exists()
+
+
+def sleep_with_stop_check(total_seconds):
+    """Sleep in small chunks so we can exit quickly if stop.flag appears."""
+    elapsed = 0
+    while elapsed < total_seconds:
+        if should_stop():
+            return True  # signal caller: stop requested
+        chunk = min(CHECK_INTERVAL_SECONDS, total_seconds - elapsed)
+        time.sleep(chunk)
+        elapsed += chunk
+    return False
+
 
 def main():
     load_dotenv()
+
+    # Clear any stale flag left over from a previous run/day
+    if STOP_FLAG.exists():
+        logger.info("Clearing stale stop flag from previous run.")
+        STOP_FLAG.unlink()
 
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -40,13 +64,17 @@ def main():
 
     run_index = 0
     while True:
+        if should_stop():
+            logger.info("Stop flag detected before run start — shutting down.")
+            STOP_FLAG.unlink(missing_ok=True)
+            break
+
         run_index += 1
         logger.info("Starting automation run #%s", run_index)
 
         try:
             with sync_playwright() as p:
                 try:
-                    # Edge + persistent profile keeps Microsoft / SharePoint sessions (incl. MFA) between runs.
                     context = launch_edge_persistent_context(p, edge_profile)
                 except Exception as exc:
                     logger.error("Browser failed to launch: %s", exc)
@@ -81,7 +109,11 @@ def main():
             "Waiting %s minutes before next run (set JOB_INTERVAL_MINUTES or RUN_ONCE=1 to change).",
             interval_minutes,
         )
-        time.sleep(interval_minutes * 60)
+        stop_requested = sleep_with_stop_check(interval_minutes * 60)
+        if stop_requested:
+            logger.info("Stop flag detected during wait — shutting down.")
+            STOP_FLAG.unlink(missing_ok=True)
+            break
 
 
 if __name__ == "__main__":

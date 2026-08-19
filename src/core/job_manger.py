@@ -16,7 +16,7 @@ class JobManager:
         sharepoint_site_url: Optional[str] = None,
         sharepoint_library_url: Optional[str] = None,
         export_filename: Optional[str] = None,
-        sharepoint_target_filename: str = "test_finish_status_report.xlsx",
+        sharepoint_target_filename: str = "Finish Status Report.xlsx",
         powerbi_workspace_url: Optional[str] = None,
         powerbi_semantic_model_name: str = "Pre Enablement Jobs",
     ):

@@ -1,5 +1,7 @@
+import re
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
@@ -10,6 +12,20 @@ from src.utils.logger import logger
 class SharePointExcelEditor:
     def __init__(self, page: Page):
         self.page = page
+
+    def _is_direct_doc_url(self, url: str) -> bool:
+        parsed = urlparse(url.lower())
+        path = parsed.path
+        query = parsed.query
+        return (
+            "doc.aspx" in path
+            or "sourcedoc=" in query
+            or "/:x:/" in path
+            or "/:w:/" in path
+            or "/:p:/" in path
+            or path.endswith(".xlsx")
+            or path.endswith(".xls")
+        )
 
     def update_file_values(
         self,
@@ -23,13 +39,16 @@ class SharePointExcelEditor:
         if not data_html and not data_tsv:
             raise ValueError("Provide data_html or data_tsv")
 
-        logger.info("Opening SharePoint home page")
+        logger.info("Opening SharePoint location: %s", sharepoint_home_url)
         self.page.goto(sharepoint_home_url, timeout=120_000, wait_until="domcontentloaded")
         self.page.wait_for_timeout(5000)
 
-        logger.info("Opening SharePoint file: %s", file_name)
-        if not self._open_excel_file(file_name):
-            raise RuntimeError(f"Could not open SharePoint file: {file_name}")
+        if self._is_direct_doc_url(sharepoint_home_url):
+            logger.info("Direct SharePoint document URL detected; workbook loaded directly")
+        else:
+            logger.info("Opening SharePoint file: %s", file_name)
+            if not self._open_excel_file(file_name):
+                raise RuntimeError(f"Could not open SharePoint file: {file_name}")
 
         self._ensure_edit_mode()
         self._focus_workbook()
@@ -56,13 +75,16 @@ class SharePointExcelEditor:
         if not paste_source.is_file():
             raise FileNotFoundError(f"Export file not found: {paste_source}")
 
-        logger.info("Opening SharePoint home page")
+        logger.info("Opening SharePoint location: %s", sharepoint_home_url)
         self.page.goto(sharepoint_home_url, timeout=120_000, wait_until="domcontentloaded")
         self.page.wait_for_timeout(5000)
 
-        logger.info("Opening SharePoint file: %s", file_name)
-        if not self._open_excel_file(file_name):
-            raise RuntimeError(f"Could not open SharePoint file: {file_name}")
+        if self._is_direct_doc_url(sharepoint_home_url):
+            logger.info("Direct SharePoint document URL detected; workbook loaded directly")
+        else:
+            logger.info("Opening SharePoint file: %s", file_name)
+            if not self._open_excel_file(file_name):
+                raise RuntimeError(f"Could not open SharePoint file: {file_name}")
 
         # self._ensure_edit_mode()
         # self._focus_workbook()
@@ -72,11 +94,15 @@ class SharePointExcelEditor:
         logger.info("SharePoint workbook updated from export %s (values only, at A2)", paste_source.name)
 
     def _open_excel_file(self, file_name: str) -> bool:
+        stem = Path(file_name).stem
         normalized_names = [file_name]
         if not file_name.lower().endswith(".xlsx"):
             normalized_names.append(f"{file_name}.xlsx")
-        else:
-            normalized_names.append(file_name[:-5])
+
+        readable_title = stem.replace("_", " ").title()
+        for name_variant in (f"{readable_title}.xlsx", readable_title, stem):
+            if name_variant not in normalized_names:
+                normalized_names.append(name_variant)
 
         for candidate in normalized_names:
             if self._click_file_and_switch_page(candidate):
@@ -84,20 +110,33 @@ class SharePointExcelEditor:
         return False
 
     def _click_file_and_switch_page(self, candidate_name: str) -> bool:
-        link = self.page.get_by_role("link", name=candidate_name)
+        exact_pattern = re.compile(rf"^{re.escape(candidate_name)}$", re.IGNORECASE)
+
+        # 1. Try exact link name match
+        link = self.page.get_by_role("link", name=exact_pattern)
         try:
-            link.first.wait_for(state="visible", timeout=5_000)
+            link.first.wait_for(state="visible", timeout=3_000)
         except Exception:
-            link = self.page.get_by_text(candidate_name, exact=False).first
+            # 2. Try exact locator match on title, aria-label, or text-is
+            link = self.page.locator(
+                f'a:text-is("{candidate_name}"), '
+                f'[aria-label="{candidate_name}"], '
+                f'[title="{candidate_name}"]'
+            )
             try:
-                link.wait_for(state="visible", timeout=5_000)
+                link.first.wait_for(state="visible", timeout=3_000)
             except Exception:
-                return False
+                # 3. Try exact text match
+                link = self.page.get_by_text(candidate_name, exact=True)
+                try:
+                    link.first.wait_for(state="visible", timeout=3_000)
+                except Exception:
+                    return False
 
         existing_pages = list(self.page.context.pages)
         current_url = self.page.url
         try:
-            link.click(timeout=5_000)
+            link.first.click(timeout=5_000)
         except Exception:
             return False
 
@@ -115,7 +154,7 @@ class SharePointExcelEditor:
             return True
 
         try:
-            link.dblclick(timeout=10_000)
+            link.first.dblclick(timeout=10_000)
             self.page.wait_for_timeout(5000)
             if len(self.page.context.pages) > len(existing_pages):
                 self.page = self.page.context.pages[-1]

@@ -51,10 +51,15 @@ def main():
         logger.error("Credentials not found in environment variables.")
         sys.exit(1)
 
-    sharepoint_site_url = os.getenv("SHAREPOINT_SITE_URL") or os.getenv("SHAREPOINT_LIBRARY_URL") or None
+    sharepoint_site_url = (
+        os.getenv("SHAREPOINT_FILE_URL")
+        or os.getenv("SHAREPOINT_SITE_URL")
+        or os.getenv("SHAREPOINT_LIBRARY_URL")
+        or None
+    )
     sharepoint_document_library_url = os.getenv("SHAREPOINT_DOCUMENT_LIBRARY_URL") or None
     export_filename = os.getenv("EXPORT_FILENAME") or None
-    sharepoint_target_filename = os.getenv("SHAREPOINT_TARGET_FILENAME", "test_finish_status_report.xlsx")
+    sharepoint_target_filename = os.getenv("SHAREPOINT_TARGET_FILENAME", "Finish Status Report.xlsx")
     powerbi_workspace_url = os.getenv("POWERBI_WORKSPACE_URL") or None
     powerbi_semantic_model_name = os.getenv("POWERBI_SEMANTIC_MODEL_NAME", "Pre Enablement Jobs")
     interval_minutes = int(os.getenv("JOB_INTERVAL_MINUTES", "15"))

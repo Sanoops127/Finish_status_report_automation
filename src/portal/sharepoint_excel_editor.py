@@ -39,6 +39,7 @@ class SharePointExcelEditor:
         else:
             logger.info("Pasting TSV at A1: %s", file_name)
             self._paste_excel_content(data_tsv or "")
+        self.page.wait_for_timeout(5000)
         self._apply_formulas_to_columns()
         self._save_file()
         logger.info("SharePoint file updated with export data")
@@ -264,45 +265,45 @@ class SharePointExcelEditor:
             html_table,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(4000)
+        self.page.wait_for_timeout(20000)
 
     def _apply_formulas_to_columns(self) -> None:
         """Apply date formatting formulas to columns AA and AB after paste."""
         try:
             logger.info("Applying formulas to columns AA and AB")
             self._focus_workbook()
-            self.page.wait_for_timeout(1000)
+            self.page.wait_for_timeout(5000)
 
             # Navigate to A2 first
             self.page.keyboard.press("Control+Home")
-            self.page.wait_for_timeout(500)
+            self.page.wait_for_timeout(1000)
 
             # Navigate to column AA (27th column) by pressing Right 26 times
             logger.info("Navigating to column AA")
             for _ in range(28):
                 self.page.keyboard.press("ArrowRight")
-                self.page.wait_for_timeout(100)
-            self.page.wait_for_timeout(700)
+                self.page.wait_for_timeout(300)
+            self.page.wait_for_timeout(1000)
 
             # Enter the date formula in AA2
             formula_date = '=IF(ISBLANK(M2), "", TEXT(M2, "dd-mm-yyyy"))'
             logger.info("Entering date formula in AA2")
             self.page.keyboard.type(formula_date, delay=10)
             self.page.keyboard.press("Enter")
-            self.page.wait_for_timeout(800)
+            self.page.wait_for_timeout(15000)
 
             # Go back to AA2 to copy formula down
             self.page.keyboard.press("ArrowUp")
-            self.page.wait_for_timeout(300)
+            self.page.wait_for_timeout(800)
 
             # Select from AA2 to AA1000 using keyboard
             logger.info("Selecting AA2:AA1000 and filling down")
             self.page.keyboard.press("Control+Shift+End")
-            self.page.wait_for_timeout(700)
+            self.page.wait_for_timeout(900)
 
             # Fill down using Ctrl+D
             self.page.keyboard.press("Control+d")
-            self.page.wait_for_timeout(6000)
+            self.page.wait_for_timeout(12000)
 
             # Navigate to AB2 (move right one column from current position)
             logger.info("Navigating to column AB")

@@ -213,7 +213,7 @@ class SharePointExcelEditor:
             html_table,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(100000)
 
     def _paste_excel_content(self, data_tsv: str) -> None:
         """Delete all values below header (starting at A2) and paste TSV data."""
@@ -242,7 +242,7 @@ class SharePointExcelEditor:
             data_tsv,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(6000)
+        self.page.wait_for_timeout(100000)
 
     def _paste_tsv_at_a2(self, data_tsv: str) -> None:
         """Navigate to A1 and paste TSV data directly (like manual paste)."""
@@ -262,7 +262,7 @@ class SharePointExcelEditor:
             clean_tsv,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(4000)
+        self.page.wait_for_timeout(100000)
 
     def _paste_data_at_a2(self, html_table: str) -> None:
         """Navigate to A2 and paste data values (no headers)."""
@@ -281,7 +281,7 @@ class SharePointExcelEditor:
             html_table,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(3000)
+        self.page.wait_for_timeout(400000)
 
     def _replace_sheet_with_html(self, html_table: str) -> None:
         """Clear sheet and paste HTML so columns/rows match the prepared file."""
@@ -304,7 +304,7 @@ class SharePointExcelEditor:
             html_table,
         )
         self.page.keyboard.press("Control+v")
-        self.page.wait_for_timeout(20000)
+        self.page.wait_for_timeout(400000)
 
     def _apply_formulas_to_columns(self) -> None:
         """Apply date formatting formulas to columns AA and AB after paste."""
@@ -329,7 +329,7 @@ class SharePointExcelEditor:
             logger.info("Entering date formula in AA2")
             self.page.keyboard.type(formula_date, delay=10)
             self.page.keyboard.press("Enter")
-            self.page.wait_for_timeout(15000)
+            self.page.wait_for_timeout(50000)
 
             # Go back to AA2 to copy formula down
             self.page.keyboard.press("ArrowUp")

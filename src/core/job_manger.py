@@ -3,7 +3,6 @@ from typing import Optional
 from src.core.report_transformer import read_values_without_header, rows_to_html_table
 from src.portal.sharepoint_excel_editor import SharePointExcelEditor
 from src.portal.finish_status_report_page import FinishStatusReportPage
-
 from src.portal.login_page import LoginPage
 from src.portal.powerbi_workspace_page import PowerBiWorkspacePage
 from src.utils.logger import logger
@@ -49,7 +48,6 @@ class JobManager:
             # Filter out rows without JOB ID (first column)
             rows = [row for row in rows if row and row[0] and str(row[0]).strip()]
             data_html = rows_to_html_table(rows)
-
             sp_page = self.page.context.new_page()
             try:
                 SharePointExcelEditor(sp_page).update_file_values(
@@ -60,11 +58,8 @@ class JobManager:
                 logger.info("SharePoint online Excel update finished")
             finally:
                 sp_page.close()
-
         else:
             logger.info("SHAREPOINT_SITE_URL not set; skipping SharePoint update")
-
-
 
         if self.powerbi_workspace_url:
             pbi_page = self.page.context.new_page()

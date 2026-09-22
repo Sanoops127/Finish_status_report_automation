@@ -22,12 +22,44 @@ def _is_valid_xlsx(path: Path) -> bool:
 
 def prepare_sharepoint_workbook(export_path: Path, target_path: Path) -> Path:
     """
-    Prepare exported workbook for SharePoint replacement.
-    Filters invalid rows, formats formulas for columns AA and AB, and writes streaming .xlsx output.
+    Copy the portal export to the SharePoint target filename.
+    The SharePoint file is replaced with this copy (same rows, columns, values).
     """
-    from src.core.report_transformer import prepare_finish_status_report_workbook
-    return prepare_finish_status_report_workbook(export_path, target_path)
+    export_path = export_path.resolve()
+    target_path = target_path.resolve()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
 
+    if not _is_valid_xlsx(export_path):
+        raise InvalidFileException(
+            f"Export is not a valid .xlsx: {export_path}. "
+            "Check the portal download completed successfully."
+        )
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".xlsx", delete=False, dir=target_path.parent
+    ) as tmp:
+        temp_path = Path(tmp.name)
+
+    try:
+        shutil.copy2(export_path, temp_path)
+        if not _is_valid_xlsx(temp_path):
+            raise InvalidFileException(f"Failed to copy export to temp file: {temp_path}")
+        shutil.copy2(temp_path, target_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+    wb = load_workbook(export_path, read_only=True, data_only=True)
+    max_row = wb.active.max_row or 0
+    max_col = wb.active.max_column or 0
+    wb.close()
+
+    logger.info(
+        "Prepared %s — exact copy of export (%s rows x %s columns)",
+        target_path.name,
+        max_row,
+        max_col,
+    )
+    return target_path
 
 
 def workbook_to_html_table(export_path: Path, skip_header: bool = False) -> str:

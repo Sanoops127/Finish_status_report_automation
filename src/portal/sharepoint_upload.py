@@ -71,76 +71,11 @@ class SharePointUploader:
         self.page.goto(url, timeout=120_000, wait_until="domcontentloaded")
         self.page.wait_for_timeout(5000)
 
-        if self._try_rest_api_replace(file_name, path_str):
-            return True
         if self._try_file_context_replace(file_name, path_str):
             return True
         if self._try_upload_with_replace(path_str):
             return True
         return False
-
-    def _try_rest_api_replace(self, file_name: str, path_str: str) -> bool:
-        """Attempt direct binary replace via SharePoint REST API using browser session tokens."""
-        try:
-            import base64
-            with open(path_str, "rb") as f:
-                content_b64 = base64.b64encode(f.read()).decode("ascii")
-
-            result = self.page.evaluate(
-                """async ({ b64, fileName }) => {
-                    try {
-                        let webUrl = (window._spPageContextInfo && window._spPageContextInfo.webAbsoluteUrl)
-                            ? window._spPageContextInfo.webAbsoluteUrl
-                            : window.location.origin + window.location.pathname.split('/').slice(0, 4).join('/');
-
-                        let digest = "";
-                        try {
-                            const resInfo = await fetch(webUrl + "/_api/contextinfo", {
-                                method: "POST",
-                                headers: { "Accept": "application/json;odata=verbose" }
-                            });
-                            const dataInfo = await resInfo.json();
-                            digest = dataInfo.d ? dataInfo.d.GetContextWebInformation.FormDigestValue : "";
-                        } catch (e) {
-                            const el = document.getElementById("__REQUESTDIGEST");
-                            if (el) digest = el.value;
-                        }
-
-                        const binaryString = atob(b64);
-                        const bytes = new Uint8Array(binaryString.length);
-                        for (let i = 0; i < binaryString.length; i++) {
-                            bytes[i] = binaryString.charCodeAt(i);
-                        }
-
-                        const folderCandidates = ["Shared Documents", "Documents", "Shared%20Documents"];
-                        for (const folder of folderCandidates) {
-                            try {
-                                const endpoint = `${webUrl}/_api/web/GetFolderByServerRelativeUrl('${folder}')/Files/add(url='${fileName}',overwrite=true)`;
-                                const res = await fetch(endpoint, {
-                                    method: "POST",
-                                    body: bytes,
-                                    headers: {
-                                        "Accept": "application/json;odata=verbose",
-                                        "X-RequestDigest": digest
-                                    }
-                                });
-                                if (res.ok) return { success: true };
-                            } catch (err) {}
-                        }
-                        return { success: false };
-                    } catch (e) {
-                        return { success: false, error: String(e) };
-                    }
-                }""",
-                {"b64": content_b64, "fileName": file_name},
-            )
-            if isinstance(result, dict) and result.get("success"):
-                logger.info("Directly replaced SharePoint file %s via REST API", file_name)
-                return True
-        except Exception as exc:
-            logger.debug("REST API replace attempt failed: %s", exc)
-        return False
-
 
     def _try_file_context_replace(self, file_name: str, path_str: str) -> bool:
         """File row ... menu -> Replace."""
